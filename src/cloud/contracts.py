@@ -24,6 +24,15 @@ class JobState(StrEnum):
     PUBLISHED_STALE = "published_stale"
 
 
+class ModelTier(IntEnum):
+    """Ordering for specialist work when a fresh prediction deadline exists."""
+
+    PUBLISH_CRITICAL = 0
+    EVENT_CRITICAL = 10
+    ENHANCEMENT = 20
+    EXPERIMENT = 40
+
+
 @dataclass(frozen=True)
 class ProviderQuota:
     provider: str
@@ -127,6 +136,8 @@ class ModelSpec:
     execution: ModelCapability
     horizons_days: tuple[int, ...]
     publish_partial_results: bool = True
+    tier: ModelTier = ModelTier.EXPERIMENT
+    ensemble_weight: float = 0.0
 
 
 @dataclass

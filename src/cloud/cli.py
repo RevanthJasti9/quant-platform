@@ -5,10 +5,9 @@ import json
 from datetime import UTC, datetime
 
 from src.cloud.control_plane import ControlPlane
-from src.cloud.contracts import ExecutionRequest
 from src.cloud.model_registry import default_model_specs
 from src.cloud.providers import recurring_free_provider_defaults
-from src.cloud.routers import FreeComputeRouter
+from src.cloud.routers import FreeComputeRouter, ModelOrchestrator
 from src.cloud.scheduler import default_job_definitions
 
 
@@ -65,19 +64,25 @@ def run_cli(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "predict":
         router = FreeComputeRouter(recurring_free_provider_defaults())
-        decisions = {
-            spec.name: router.route(
-                request=ExecutionRequest(
-                    job_type="model_inference",
-                    model_name=spec.name,
-                    requires_gpu=spec.execution.requires_gpu,
-                    minimum_vram_gb=spec.execution.minimum_vram_gb,
-                    supports_cpu_fallback=spec.execution.supports_cpu_fallback,
-                )
-            ).__dict__
-            for spec in default_model_specs()
-        }
-        print(json.dumps(decisions, indent=2))
+        plan = ModelOrchestrator(default_model_specs()).plan_batch(router, datetime.now(UTC))
+        print(
+            json.dumps(
+                {
+                    "routes": [
+                        {
+                            "model": item.model_name,
+                            "specialist": item.specialist,
+                            "tier": item.tier.name.lower(),
+                            **item.route.__dict__,
+                        }
+                        for item in plan.routes
+                    ],
+                    "publication": plan.publication.__dict__,
+                },
+                indent=2,
+                default=str,
+            )
+        )
         return 0
     if args.command == "train":
         print("Training plan queued: xgboost, lightgbm, catboost locally on free CPU; foundation-model fine-tune only when free GPU quota is available.")

@@ -71,6 +71,12 @@ features:
 models:
   horizons_days: [5, 20]
   purge_gap_days: 20
+  # Publish-critical tabular model weights. They are normalized at inference,
+  # so the values express relative confidence rather than requiring an exact sum.
+  price_ensemble_weights:
+    xgboost: 0.34
+    lightgbm: 0.33
+    catboost: 0.33
   xgboost:
     n_estimators: 300
     max_depth: 4

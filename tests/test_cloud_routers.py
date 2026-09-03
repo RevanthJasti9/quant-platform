@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from src.cloud.contracts import DataRequest, DataResponse, ExecutionRequest, ProviderQuota
+from src.cloud.contracts import DataRequest, DataResponse, ExecutionRequest, ModelTier, ProviderQuota
 from src.cloud.model_registry import default_model_specs
 from src.cloud.providers import ModalGPUProvider, StaticDataProvider
 from src.cloud.routers import DataRouter, FreeComputeRouter, ModelOrchestrator
@@ -93,3 +93,22 @@ def test_model_orchestrator_plans_partial_publish_when_some_models_are_delayed()
     assert publish_plan.refresh_required is True
     assert publish_plan.ready_models == ("finbert", "xgboost")
     assert publish_plan.delayed_models == ("chronos-2",)
+
+
+def test_specialist_batch_keeps_price_baseline_ahead_of_events_and_experiments():
+    specs = default_model_specs()
+    exhausted = ModalGPUProvider(
+        name="modal",
+        priority=0,
+        quota_state=ProviderQuota("modal", limit=1, used=1),
+        minimum_vram_gb=48,
+    )
+
+    plan = ModelOrchestrator(specs).plan_batch(FreeComputeRouter([exhausted]))
+
+    assert [item.model_name for item in plan.routes[:3]] == ["catboost", "lightgbm", "xgboost"]
+    assert all(item.tier == ModelTier.PUBLISH_CRITICAL for item in plan.routes[:3])
+    assert plan.publication.publish_now is True
+    assert plan.publication.refresh_required is True
+    assert set(plan.publication.ready_models) == {"xgboost", "lightgbm", "catboost"}
+    assert "finbert" in plan.publication.delayed_models

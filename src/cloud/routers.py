@@ -3,7 +3,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from src.cloud.contracts import DataProvider, DataRequest, DataResponse, ExecutionRequest, GPUProvider, JobPriority, ModelSpec
+from src.cloud.contracts import (
+    DataProvider,
+    DataRequest,
+    DataResponse,
+    ExecutionRequest,
+    GPUProvider,
+    JobPriority,
+    ModelSpec,
+    ModelTier,
+)
 
 
 @dataclass(frozen=True)
@@ -72,13 +81,31 @@ class ModelExecutionPlan:
     publish_reason: str
 
 
+@dataclass(frozen=True)
+class SpecialistRoute:
+    model_name: str
+    specialist: str
+    tier: ModelTier
+    route: RouteDecision
+
+
+@dataclass(frozen=True)
+class SpecialistBatchPlan:
+    routes: tuple[SpecialistRoute, ...]
+    publication: ModelExecutionPlan
+
+
 class ModelOrchestrator:
     def __init__(self, specs: list[ModelSpec]) -> None:
         self.specs = specs
 
+    def ordered_specs(self) -> list[ModelSpec]:
+        """Deterministic order keeps publish-critical work ahead of research."""
+        return sorted(self.specs, key=lambda spec: (spec.tier, spec.specialist, spec.name))
+
     def build_execution_requests(self, as_of: datetime | None = None) -> list[ExecutionRequest]:
         requests: list[ExecutionRequest] = []
-        for spec in self.specs:
+        for spec in self.ordered_specs():
             requests.append(
                 ExecutionRequest(
                     job_type="model_inference",
@@ -92,6 +119,34 @@ class ModelOrchestrator:
                 )
             )
         return requests
+
+    def plan_batch(self, router: FreeComputeRouter, as_of: datetime | None = None) -> SpecialistBatchPlan:
+        routes: list[SpecialistRoute] = []
+        completed: list[str] = []
+        delayed: list[str] = []
+        for spec in self.ordered_specs():
+            if spec.execution.requires_gpu:
+                route = router.route(
+                    ExecutionRequest(
+                        job_type="model_inference",
+                        model_name=spec.name,
+                        requires_gpu=True,
+                        minimum_vram_gb=spec.execution.minimum_vram_gb,
+                        supports_cpu_fallback=spec.execution.supports_cpu_fallback,
+                        deadline_at=as_of,
+                    )
+                )
+            else:
+                # The existing tabular ensemble is the cloud CPU baseline. It
+                # needs no GPU quota and is always scheduled before add-ons.
+                route = RouteDecision("ready", "cloud-cpu", "No GPU quota required")
+            routes.append(SpecialistRoute(spec.name, spec.specialist, spec.tier, route))
+            (completed if route.status == "ready" else delayed).append(spec.name)
+
+        return SpecialistBatchPlan(
+            routes=tuple(routes),
+            publication=self.plan_publication(completed, delayed, priority=JobPriority.CRITICAL),
+        )
 
     def plan_publication(
         self,

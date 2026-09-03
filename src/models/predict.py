@@ -13,12 +13,18 @@ import pandas as pd
 
 from src.config import MODELS_DIR, get_settings
 from src.data.db import get_connection, upsert_wide
-from src.models.ensemble import ensemble_confidence, ensemble_mean
+from src.models.ensemble import ensemble_confidence, ensemble_weighted_mean
 from src.models.explain import compute_batch_reasons
 from src.models.narrate import build_model_summary
 from src.models.train import CLASSIFIER_NAMES, REGRESSOR_NAMES, RESEARCH_PRICE_BASIS
 
 logger = logging.getLogger(__name__)
+
+
+def _price_ensemble_weights(settings: dict) -> list[float]:
+    configured = settings.get("models", {}).get("price_ensemble_weights", {})
+    names = ("xgboost", "lightgbm", "catboost")
+    return [float(configured.get(name, 1.0)) for name in names]
 
 
 def _current_model_version(con, horizon: int) -> tuple[str, list[str]] | None:
@@ -78,6 +84,7 @@ def run_predictions(as_of: date | None = None, tickers: list[str] | None = None,
     # once LLM reasons_summary generation is in the loop).
 
     rows_written = 0
+    ensemble_weights = _price_ensemble_weights(settings)
     for h in settings["models"]["horizons_days"]:
         current = model_versions.get(h)
         if current is None:
@@ -90,9 +97,9 @@ def run_predictions(as_of: date | None = None, tickers: list[str] | None = None,
         regressors = [joblib.load(version_dir / f"h{h}_{name}.joblib") for name in REGRESSOR_NAMES]
         classifiers = [joblib.load(version_dir / f"h{h}_{name}.joblib") for name in CLASSIFIER_NAMES]
 
-        reg_pred = ensemble_mean(*[m.predict(X) for m in regressors])
+        reg_pred = ensemble_weighted_mean([m.predict(X) for m in regressors], ensemble_weights)
         probas = [m.predict_proba(X)[:, 1] for m in classifiers]
-        proba = ensemble_mean(*probas)
+        proba = ensemble_weighted_mean(probas, ensemble_weights)
         confidence = ensemble_confidence(*probas)
         reasons = compute_batch_reasons(model_version, h, feature_cols, X)
 

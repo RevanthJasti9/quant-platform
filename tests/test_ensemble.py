@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from src.models.ensemble import ensemble_confidence, ensemble_mean
+from src.models.ensemble import ensemble_confidence, ensemble_mean, ensemble_weighted_mean
 
 
 def test_ensemble_mean_averages_any_number_of_arrays():
@@ -45,3 +45,14 @@ def test_confidence_drops_when_a_third_model_disagrees_more_than_the_other_two()
     two_model = ensemble_confidence(np.array([0.9]), np.array([0.85]))
     three_model = ensemble_confidence(np.array([0.9]), np.array([0.85]), np.array([0.1]))
     assert three_model[0] < two_model[0]
+
+
+def test_weighted_ensemble_normalizes_relative_model_weights():
+    result = ensemble_weighted_mean([np.array([0.0, 1.0]), np.array([1.0, 0.0])], [3.0, 1.0])
+
+    np.testing.assert_allclose(result, [0.25, 0.75])
+
+
+def test_weighted_ensemble_rejects_invalid_weights():
+    with np.testing.assert_raises(ValueError):
+        ensemble_weighted_mean([np.array([1.0])], [0.0])
