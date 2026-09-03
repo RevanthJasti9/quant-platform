@@ -1,0 +1,16 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "quant-platform",
+      "runtimeExecutable": "/Users/revanthjasti/quant-platform/.venv/bin/uvicorn",
+      "runtimeArgs": [
+        "app.main:app", "--host", "127.0.0.1", "--port", "8000", "--reload",
+        "--reload-dir", "/Users/revanthjasti/quant-platform/app",
+        "--reload-dir", "/Users/revanthjasti/quant-platform/src",
+        "--reload-dir", "/Users/revanthjasti/quant-platform/config"
+      ],
+      "port": 8000
+    }
+  ]
+}

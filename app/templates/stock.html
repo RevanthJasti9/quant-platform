@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+{% block title %}{{ ticker }} — AI Quant{% endblock %}
+{% block content %}
+
+<div class="headline-block card">
+    <div class="row-ticker" style="font-size:1.1rem;">{{ ticker }}</div>
+    {% if company_name %}
+    <div class="row-sub" style="margin-top:-2px;">{{ company_name }}{% if sector %} · {{ sector }}{% endif %}</div>
+    {% endif %}
+    {% if latest_close %}
+    <div class="headline-value">${{ "%.2f"|format(latest_close) }}</div>
+    {% endif %}
+    {% if day_change_pct is not none %}
+    <div class="headline-change {{ 'pos tri-up' if day_change_pct >= 0 else 'neg tri-down' }}" style="font-size:0.95rem;">
+        {{ '+' if day_change_dollar >= 0 else '' }}${{ "%.2f"|format(day_change_dollar) }}
+        ({{ '+' if day_change_pct >= 0 else '' }}{{ "%.1f"|format(day_change_pct * 100) }}%)
+        <span class="caption">today</span>
+    </div>
+    {% endif %}
+
+    {% if current_predictions %}
+    <div class="horizon-cards">
+        {% for p in current_predictions %}
+        <div class="horizon-card">
+            <div class="stat-label">Next {{ p.horizon_days }}D</div>
+            <div class="stat-value {{ p.outlook_class }}">{{ "%+.1f"|format(p.expected_relative_return * 100) }}%</div>
+            <div class="stat-hint">vs. market · {{ p.caption }}</div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if track_record %}
+    <div class="track-record">
+        <span class="caption" style="margin-left:0;">Track record:</span>
+        {% for t in track_record %}
+        <span>{{ t.horizon_days }}D <span class="pct {{ 'pos' if t.pct >= 50 else 'neg' }}">{{ t.correct }}/{{ t.evaluated }}</span>{% if t.ci %} <span class="dim">({{ t.ci }})</span>{% endif %}</span>{% if not loop.last %}·{% endif %}
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if primary %}
+    {% if primary.summary %}
+    <p class="llm-summary">{{ primary.summary }}</p>
+    {% endif %}
+    {% if primary.reasons %}
+    <div class="reason-chips">
+        {% for reason in primary.reasons %}
+        <span class="reason-chip {{ reason.sign_class }}">{{ '+' if reason.sign_class == 'pos' else '−' }} {{ reason.label }}</span>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endif %}
+</div>
+
+<div class="section">
+    <canvas id="priceChart" height="220"></canvas>
+    <p class="chart-caption" id="chartCaption">&nbsp;</p>
+    <div class="range-tabs" id="rangeTabs">
+        {% for r in ranges %}
+        <button data-range="{{ r }}" class="{{ 'active' if r == default_range else '' }}">{{ r }}</button>
+        {% endfor %}
+    </div>
+</div>
+
+<details class="section card">
+    <summary><h2 style="display:inline;">Forecast history</h2></summary>
+    {% if predictions %}
+    <div class="row-list" style="margin-top:12px;">
+    {% for p in predictions %}
+        <div class="row" style="flex-wrap:wrap;">
+            <div class="row-left">
+                <div class="row-ticker" style="font-size:0.9rem;">{{ p.horizon_days }}D · {{ p.prediction_date }}</div>
+                <div class="row-sub">
+                    {{ p.caption }}
+                    {% if p.outcome %} · {{ 'correct' if p.outcome == 'correct' else 'missed' }}{% endif %}
+                </div>
+                {% if p.summary %}
+                <p class="llm-summary" style="margin:6px 0 0; font-size:0.82rem;">{{ p.summary }}</p>
+                {% endif %}
+                {% if p.reasons %}
+                <div class="reason-chips" style="margin-top:6px;">
+                    {% for reason in p.reasons %}
+                    <span class="reason-chip {{ reason.sign_class }}">{{ '+' if reason.sign_class == 'pos' else '−' }} {{ reason.label }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            <div class="row-right">
+                <div class="row-value {{ p.outlook_class }}">{{ "%+.1f"|format(p.expected_relative_return * 100) }}%</div>
+                {% if p.actual_relative_return is not none %}
+                <div class="row-sub">actual {{ "%+.1f"|format(p.actual_relative_return * 100) }}%</div>
+                {% endif %}
+            </div>
+        </div>
+    {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">No forecasts logged for {{ ticker }} yet.</div>
+    {% endif %}
+</details>
+
+{% if recent_headlines %}
+<details class="section card">
+    <summary><h2 style="display:inline;">Recent news</h2></summary>
+    <div style="margin-top:12px;">
+        {% if news_summary %}
+        <p class="llm-summary">{{ news_summary }}</p>
+        {% endif %}
+        <div class="row-list" style="margin-top:6px;">
+        {% for h in recent_headlines %}
+            <a class="row" href="{{ h.url }}" target="_blank" rel="noopener noreferrer">
+                <div class="row-left">
+                    <div class="row-sub" style="font-size:0.86rem; color:var(--text-dim);">{{ h.headline }}</div>
+                    <div class="row-sub">
+                        {{ h.event_type|replace('_', ' ')|title }} · {{ h.source or 'Unknown source' }} · {{ h.provider or 'legacy feed' }} · {{ h.published_at }}
+                    </div>
+                </div>
+            </a>
+        {% endfor %}
+        </div>
+    </div>
+</details>
+{% endif %}
+
+{% if feature_groups %}
+<details class="section card">
+    <summary><h2 style="display:inline;">What the model looked at</h2></summary>
+    <div style="margin-top:14px;">
+    {% for group in feature_groups %}
+    <div class="feature-group">
+        <h3>{{ group.name }}</h3>
+        {% for row in group.rows %}
+        <div class="feature-row">
+            <span class="feature-name">
+                {% if row.desc %}
+                <span class="term">{{ row.label }}<span class="tip">{{ row.desc }}</span></span>
+                {% else %}
+                {{ row.label }}
+                {% endif %}
+            </span>
+            <span class="feature-value">{{ row.value }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% endfor %}
+    </div>
+</details>
+{% endif %}
+
+<script>
+let priceChart = null;
+
+function renderChart(data) {
+    const datasets = [{
+        label: 'Price',
+        data: data.price_series,
+        borderColor: '#ffffff',
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        fill: true,
+        pointRadius: 0,
+        borderWidth: 1.75,
+        tension: 0.15,
+        spanGaps: false,
+    }];
+    if (data.forecast_series && data.forecast_series.length) {
+        datasets.push({
+            label: 'Forecast',
+            data: data.forecast_series,
+            borderColor: data.forecast_up ? '#00c805' : '#ff5000',
+            borderDash: [6, 4],
+            fill: false,
+            pointRadius: 0,
+            borderWidth: 1.75,
+            tension: 0,
+            spanGaps: false,
+        });
+    }
+
+    if (priceChart) priceChart.destroy();
+    priceChart = new Chart(document.getElementById('priceChart'), {
+        type: 'line',
+        data: { labels: data.labels, datasets },
+        options: {
+            responsive: true,
+            interaction: { intersect: false, mode: 'index' },
+            scales: {
+                x: { ticks: { maxTicksLimit: 6 }, grid: { display: false } },
+                y: { grid: { color: 'rgba(255,255,255,0.06)' } }
+            },
+            plugins: { legend: { display: false } }
+        }
+    });
+
+    const caption = document.getElementById('chartCaption');
+    if (data.forecast_series && data.forecast_series.length) {
+        caption.innerHTML = '<span class="dim">— ' + data.caption + '</span>&nbsp; ' +
+            '<span class="' + (data.forecast_up ? 'pos' : 'neg') + '">┄ model forecast</span>';
+    } else {
+        caption.textContent = data.caption;
+    }
+}
+
+async function loadRange(range) {
+    document.querySelectorAll('#rangeTabs button').forEach(function (b) {
+        b.classList.toggle('active', b.dataset.range === range);
+    });
+    const resp = await fetch('/stock/{{ ticker }}/chart?range=' + encodeURIComponent(range));
+    renderChart(await resp.json());
+}
+
+document.querySelectorAll('#rangeTabs button').forEach(function (b) {
+    b.addEventListener('click', function () { loadRange(b.dataset.range); });
+});
+
+loadRange('{{ default_range }}');
+</script>
+
+{% endblock %}

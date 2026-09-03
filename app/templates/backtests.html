@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block title %}Strategy Performance — AI Quant{% endblock %}
+{% block content %}
+
+<h1>Strategy Performance</h1>
+
+{% if latest %}
+<div class="headline-block">
+    <div class="row-sub">{{ latest.horizon_days }}D model · backtested across {{ latest.n_folds }} walk-forward fold{{ '' if latest.n_folds == 1 else 's' }}</div>
+    <div class="headline-value {{ 'pos' if latest.cagr >= 0 else 'neg' }}">{{ "%+.1f"|format(latest.cagr * 100) }}%<span class="caption">/yr</span></div>
+    <div class="headline-change dim" style="font-weight:500;">{{ latest.caption }}</div>
+</div>
+
+<div class="section card">
+    <canvas id="equityChart" height="200"></canvas>
+    <p class="chart-caption">Growth of $1 · {{ latest.start_date }} – {{ latest.end_date }}</p>
+</div>
+
+<div class="section card">
+    <div class="section-head"><h2>Metrics</h2></div>
+    <div style="margin-top:10px;">
+    {% for m in metrics %}
+        <div class="feature-row">
+            <span class="feature-name"><span class="term">{{ m.label }}<span class="tip">{{ m.desc }}</span></span></span>
+            <span class="feature-value {{ m.css }}">{{ m.value }}</span>
+        </div>
+    {% endfor %}
+    </div>
+</div>
+
+{% if has_quantiles %}
+<div class="section card">
+    <div class="section-head"><h2>Are the top picks actually better?</h2></div>
+    <p class="chart-caption" style="margin-top:2px;">
+        Every stock the model scored, split into 5 groups by that score, showing what each group actually returned.
+        A model with real skill should climb left to right -- flat or jumbled bars mean the score isn't
+        reliably separating better stocks from worse ones.
+    </p>
+    <canvas id="quantileChart" height="160" style="margin-top:10px;"></canvas>
+</div>
+{% endif %}
+
+{% if regime_rows %}
+<details class="section card">
+    <summary><h2 style="display:inline;">By market regime</h2></summary>
+    <p class="chart-caption" style="margin-top:8px;">
+        A strong overall number can hide a strategy that only worked in one favorable stretch --
+        this breaks the same backtest down by whether the market was trending up/down or unusually calm/choppy.
+    </p>
+    <div class="row-list" style="margin-top:4px;">
+    {% for r in regime_rows %}
+        <div class="row">
+            <div class="row-left">
+                <div class="row-ticker" style="font-size:0.9rem;">{{ r.label }}</div>
+                <div class="row-sub">{{ r.n_days }} simulated days · {{ r.win_rate }} win rate</div>
+            </div>
+            <div class="row-right">
+                <div class="row-value {{ r.alpha_css }}">{{ r.alpha }} <span class="caption">alpha</span></div>
+                <div class="row-sub">{{ r.sharpe }} sharpe</div>
+            </div>
+        </div>
+    {% endfor %}
+    </div>
+</details>
+{% endif %}
+
+{% if fold_rows %}
+<details class="section card">
+    <summary><h2 style="display:inline;">By fold</h2></summary>
+    <p class="chart-caption" style="margin-top:8px;">
+        Each fold is a separate slice of history, trained fresh and tested only on data that came after it --
+        shown in order, so a fading edge over time is visible instead of averaged into one number.
+    </p>
+    <div class="row-list" style="margin-top:4px;">
+    {% for r in fold_rows %}
+        <div class="row">
+            <div class="row-left">
+                <div class="row-ticker" style="font-size:0.9rem;">{{ r.label }}</div>
+                <div class="row-sub">{{ r.n_days }} simulated days · {{ r.win_rate }} win rate</div>
+            </div>
+            <div class="row-right">
+                <div class="row-value {{ r.alpha_css }}">{{ r.alpha }} <span class="caption">alpha</span></div>
+                <div class="row-sub">{{ r.sharpe }} sharpe</div>
+            </div>
+        </div>
+    {% endfor %}
+    </div>
+</details>
+{% endif %}
+{% endif %}
+
+{% if history %}
+<details class="section card">
+    <summary><h2 style="display:inline;">Earlier tests</h2></summary>
+    <div class="row-list" style="margin-top:12px;">
+    {% for r in history %}
+        <div class="row">
+            <div class="row-left">
+                <div class="row-ticker" style="font-size:0.9rem;">{{ r.horizon_days }}D</div>
+                <div class="row-sub">{{ r.start_date }} → {{ r.end_date }}</div>
+            </div>
+            <div class="row-right">
+                <div class="row-value {{ 'pos' if r.sharpe >= 0 else 'neg' }}">{{ "%.2f"|format(r.sharpe) }}</div>
+                <div class="row-sub">sharpe</div>
+            </div>
+        </div>
+    {% endfor %}
+    </div>
+</details>
+{% endif %}
+
+{% if not latest %}
+<div class="empty-state">
+    No tests run yet. Run <code>python scripts/run_pipeline.py</code> to train the model and backtest it.
+</div>
+{% endif %}
+
+<script>
+const quantileLabels = {{ quantile_labels|safe }};
+const quantileValues = {{ quantile_values|safe }};
+if (quantileValues.length) {
+    new Chart(document.getElementById('quantileChart'), {
+        type: 'bar',
+        data: {
+            labels: quantileLabels,
+            datasets: [{
+                data: quantileValues,
+                backgroundColor: quantileValues.map(v => v >= 0 ? 'rgba(0,200,5,0.55)' : 'rgba(255,80,0,0.55)'),
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                x: { grid: { display: false } },
+                y: { grid: { color: 'rgba(255,255,255,0.06)' }, title: { display: true, text: 'avg return %' } }
+            },
+            plugins: { legend: { display: false } }
+        }
+    });
+}
+
+const equityCurve = {{ equity_curve|safe }};
+if (equityCurve.length) {
+    const up = equityCurve[equityCurve.length - 1] >= equityCurve[0];
+    new Chart(document.getElementById('equityChart'), {
+        type: 'line',
+        data: {
+            labels: equityCurve.map((_, i) => i),
+            datasets: [{
+                data: equityCurve,
+                borderColor: up ? '#00c805' : '#ff5000',
+                backgroundColor: up ? 'rgba(0,200,5,0.08)' : 'rgba(255,80,0,0.08)',
+                fill: true,
+                pointRadius: 0,
+                borderWidth: 1.75,
+                tension: 0.15
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                x: { ticks: { maxTicksLimit: 6 }, grid: { display: false } },
+                y: { grid: { color: 'rgba(255,255,255,0.06)' } }
+            },
+            plugins: { legend: { display: false } }
+        }
+    });
+}
+</script>
+
+{% endblock %}

@@ -1,0 +1,274 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — AI Quant{% endblock %}
+{% block content %}
+
+<h1>Dashboard</h1>
+
+{% if holdings %}
+<div class="headline-block">
+    <div class="headline-value">${{ "%.2f"|format(holdings_totals.value) }}</div>
+    <div class="headline-change dim" style="font-size:0.82rem; margin-top:2px;">
+        Saved stock positions · current public market prices
+    </div>
+    <div class="headline-change {{ 'pos tri-up' if holdings_totals.day_change >= 0 else 'neg tri-down' }}">
+        {{ '+' if holdings_totals.day_change >= 0 else '' }}${{ "%.2f"|format(holdings_totals.day_change) }}
+        ({{ '+' if holdings_totals.day_change_pct >= 0 else '' }}{{ "%.1f"|format(holdings_totals.day_change_pct * 100) }}%)
+        <span class="caption">stocks today</span>
+    </div>
+    <div class="headline-change {{ 'pos tri-up' if holdings_totals.gain_dollar >= 0 else 'neg tri-down' }}" style="font-size:0.86rem; margin-top:2px;">
+        {{ '+' if holdings_totals.gain_dollar >= 0 else '' }}${{ "%.2f"|format(holdings_totals.gain_dollar) }}
+        ({{ '+' if holdings_totals.gain_pct >= 0 else '' }}{{ "%.1f"|format(holdings_totals.gain_pct * 100) }}%)
+        <span class="caption">stock positions</span>
+    </div>
+</div>
+{% endif %}
+
+<div class="section card">
+    <div class="section-head">
+        <h2>Holdings</h2>
+        <form method="get" action="/dashboard">
+            <input type="hidden" name="refresh_prices" value="1">
+            <button class="secondary-button" type="submit">Refresh prices</button>
+        </form>
+    </div>
+
+    {% if holdings_error %}
+    <div class="error-banner">{{ holdings_error }}</div>
+    {% endif %}
+
+    {% if holdings %}
+    <div class="row-list">
+    {% for h in holdings %}
+        <div class="row">
+            <div style="display:flex; align-items:center; gap:12px; min-width:0;">
+                <div class="avatar {{ h.avatar.color_class }}">{{ h.avatar.letter }}</div>
+                <div class="row-left">
+                    <a class="row-ticker" href="/stock/{{ h.ticker }}" style="text-decoration:none;">{{ h.company_name or h.ticker }}</a>
+                    <div class="row-sub">
+                        {{ h.ticker }}{% if h.company_name %} · {% endif %}{{ h.shares_display }} sh
+                        {% if h.current_price %} · Current ${{ "%.2f"|format(h.current_price) }}{% endif %}
+                        · Invested ${{ "%.2f"|format(h.total_paid) }}
+                        <span class="caption">{{ h.price_source or 'market data' }}</span>
+                        {% if h.day_change_pct is not none %}
+                        <span class="{{ 'pos' if h.day_change_pct >= 0 else 'neg' }}">{{ "%+.1f"|format(h.day_change_pct * 100) }}% today</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            <div class="row-right">
+                {% if h.value is not none %}
+                <div class="row-value">${{ "%.2f"|format(h.value) }}</div>
+                <div class="row-change {{ 'pos tri-up' if h.gain_dollar >= 0 else 'neg tri-down' }}">
+                    {{ "%+.1f"|format(h.gain_pct * 100) }}% total
+                </div>
+                {% else %}
+                <div class="row-value dim">fetching…</div>
+                {% endif %}
+            </div>
+        </div>
+    {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">No holdings have been synced yet.</div>
+    {% endif %}
+</div>
+
+<div class="section card">
+    <div class="section-head">
+        <h2>Outperforming Now</h2>
+        <span class="dim" style="font-size:0.78rem;">{{ outperformers_horizon }}D</span>
+    </div>
+
+    {% if outperformers %}
+    <div class="row-list">
+    {% for p in outperformers %}
+        <a class="row" href="/stock/{{ p.ticker }}">
+            <div class="row-left">
+                <div class="row-ticker">{{ p.ticker }}</div>
+                <div class="row-sub">{{ p.caption }}</div>
+            </div>
+            <div class="row-right">
+                <div class="row-value {{ p.outlook_class }} {{ 'tri-up' if p.outlook_class == 'pos' else 'tri-down' }}">
+                    {{ "%+.1f"|format(p.expected_relative_return * 100) }}%
+                </div>
+            </div>
+        </a>
+    {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+        No forecasts yet. Run <code>python scripts/run_pipeline.py</code> to get started.
+    </div>
+    {% endif %}
+</div>
+
+<div class="stat-strip card">
+    <div>
+        <div class="stat-label">Scanned</div>
+        <div class="stat-value">{{ n_prices }}</div>
+    </div>
+    <div>
+        <div class="stat-label">Forecasts</div>
+        <div class="stat-value">{{ n_total }}</div>
+    </div>
+    <div>
+        <div class="stat-label">
+            <span class="term">Accuracy<span class="tip">Checked automatically once enough real trading days have passed to know whether each forecast actually came true — nothing is graded early.</span></span>
+        </div>
+        {% if n_evaluated > 0 %}
+        <div class="stat-value">{{ "%.0f"|format(n_correct / n_evaluated * 100) }}%</div>
+        <div class="stat-hint">{{ n_correct }}/{{ n_evaluated }} calls checked</div>
+        {% elif next_eval_date %}
+        <div class="stat-value dim">—</div>
+        <div class="stat-hint">first check {{ next_eval_date }}</div>
+        {% else %}
+        <div class="stat-value dim">—</div>
+        {% endif %}
+    </div>
+    {% if backtest %}
+    <div>
+        <div class="stat-label">Strategy</div>
+        <div class="stat-value {{ 'pos' if backtest.sharpe >= 0 else 'neg' }}">{{ "%.2f"|format(backtest.sharpe) }}</div>
+        <div class="stat-hint"><a href="/backtests" style="color:var(--muted); text-decoration:none;">details →</a></div>
+    </div>
+    {% endif %}
+    <div>
+        <div class="stat-label">CPU</div>
+        <div class="stat-value {{ 'neg' if system_stats.cpu_percent > 80 else '' }}">{{ "%.0f"|format(system_stats.cpu_percent) }}%</div>
+    </div>
+    <div>
+        <div class="stat-label">Memory</div>
+        <div class="stat-value {{ 'neg' if system_stats.mem_percent > 85 else '' }}">{{ "%.0f"|format(system_stats.mem_percent) }}%</div>
+        <div class="stat-hint">{{ "%.1f"|format(system_stats.mem_used_gb) }} / {{ "%.0f"|format(system_stats.mem_total_gb) }} GB</div>
+    </div>
+    <div>
+        <div class="stat-label">Database</div>
+        <div class="stat-value">{{ db_stats.file_size_label }}</div>
+        <div class="stat-hint">{{ db_stats.total_rows_label }} rows</div>
+    </div>
+</div>
+
+<details class="section card activity-panel" id="activity-panel">
+    <summary>
+        <h2 style="display:inline;">Live activity</h2>
+        <span class="activity-status" id="activity-status">Open to watch</span>
+    </summary>
+    <div class="activity-copy">Shows what the app is doing right now, including data downloads, feature building, model work, and predictions.</div>
+    <div class="activity-log" id="activity-log" aria-live="polite">
+        <div class="empty-state">Open this panel to load activity.</div>
+    </div>
+</details>
+
+<details class="section card" style="margin-top:18px;">
+    <summary>
+        <h2 style="display:inline;">System health</h2>
+        {% if latest_run %}
+        <span class="pill {{ 'neg' if health_issue_count > 0 else 'pos' }}" style="margin-left:8px;">
+            {{ "%d issue%s"|format(health_issue_count, '' if health_issue_count == 1 else 's') if health_issue_count > 0 else 'normal' }}
+        </span>
+        {% endif %}
+    </summary>
+
+    {% if latest_run %}
+    <div class="row-sub" style="margin-top:8px;">
+        Last data run {{ latest_run.started_label }} · <span class="{{ 'neg' if latest_run.status != 'success' else 'pos' }}">{{ latest_run.status }}</span>
+        {% if latest_run.critical_failure %}<span class="caption neg">critical source failed — predictions were not refreshed</span>{% endif %}
+    </div>
+
+    <div style="margin-top:14px;">
+        <div class="stat-label">Sources</div>
+        {% for s in source_runs %}
+        <div class="health-row">
+            <div>
+                <span class="health-row-name">{{ s.source }}</span>
+                {% if s.error %}<div class="health-row-detail">{{ s.error[:120] }}</div>{% endif %}
+            </div>
+            <div style="text-align:right;">
+                <span class="pill {{ 'neg' if s.status == 'failed' else 'pos' }}">{{ s.status }}</span>
+                {% if s.status != 'failed' %}<div class="health-row-detail">{{ s.row_count }} rows</div>{% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div style="margin-top:14px;">
+        <div class="stat-label">Data quality</div>
+        {% for c in quality_checks %}
+        <div class="health-row">
+            <div>
+                <span class="health-row-name">{{ c.check_name.replace('_', ' ') }}</span>
+                <div class="health-row-detail">{{ c.detail }}</div>
+            </div>
+            <div>
+                <span class="pill {{ 'neg' if c.status == 'fail' else ('warn' if c.status == 'warn' else 'pos') }}">{{ c.status }}</span>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">No ingest runs recorded yet. Run <code>python scripts/run_pipeline.py</code> to get started.</div>
+    {% endif %}
+
+    <div style="margin-top:14px;">
+        <div class="stat-label">Storage ({{ db_stats.file_size_label }} total)</div>
+        {% for t in db_stats.tables %}
+        <div class="health-row">
+            <div><span class="health-row-name">{{ t.label }}</span></div>
+            <div class="health-row-detail">{{ t.row_count_label }}</div>
+        </div>
+        {% endfor %}
+    </div>
+</details>
+
+<script>
+(() => {
+    const panel = document.getElementById("activity-panel");
+    const log = document.getElementById("activity-log");
+    const status = document.getElementById("activity-status");
+    let timer = null;
+
+    const escapeHtml = (value) => String(value).replace(/[&<>'"]/g, (char) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;"
+    }[char]));
+
+    async function refreshActivity() {
+        try {
+            const response = await fetch("/api/activity?limit=120", {cache: "no-store"});
+            if (!response.ok) throw new Error("Activity unavailable");
+            const {events} = await response.json();
+            if (!events.length) {
+                log.innerHTML = '<div class="empty-state">Waiting for activity. Scheduled runs will appear here when they start.</div>';
+            } else {
+                log.innerHTML = events.map((event) => {
+                    const time = new Date(event.timestamp).toLocaleTimeString([], {hour: "numeric", minute: "2-digit", second: "2-digit"});
+                    return `<div class="activity-row activity-${escapeHtml(event.level)}"><time>${time}</time><span class="activity-source">${escapeHtml(event.source)}</span><span>${escapeHtml(event.message)}</span></div>`;
+                }).join("");
+                log.scrollTop = log.scrollHeight;
+            }
+            status.textContent = "Live";
+        } catch (_) {
+            status.textContent = "Disconnected";
+        }
+    }
+
+    panel.addEventListener("toggle", () => {
+        if (panel.open) {
+            refreshActivity();
+            timer = window.setInterval(refreshActivity, 2000);
+        } else if (timer) {
+            window.clearInterval(timer);
+            timer = null;
+            status.textContent = "Open to watch";
+        }
+    });
+})();
+
+// The read-only Robinhood refresh writes independently of the ML pipeline.
+// Reload only while this tab is visible so the holdings view follows the
+// newest broker snapshot without disturbing a background tab.
+window.setInterval(() => {
+    if (!document.hidden) window.location.reload();
+}, 60000);
+</script>
+
+{% endblock %}

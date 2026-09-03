@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}AI Quant{% endblock %}</title>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <link rel="stylesheet" href="/static/style.css?v={{ static_version() }}">
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <nav class="topnav">
+        <a href="/dashboard" class="brand">AI QUANT</a>
+        <a href="/dashboard" class="{{ 'active' if request.url.path == '/dashboard' else '' }}">Dashboard</a>
+        <a href="/accuracy" class="{{ 'active' if request.url.path == '/accuracy' else '' }}">Accuracy</a>
+        <a href="/backtests" class="{{ 'active' if request.url.path == '/backtests' else '' }}">Strategy Performance</a>
+        <button class="refresh-btn" onclick="this.classList.add('spinning'); location.reload()" title="Refresh">&#8635;</button>
+    </nav>
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>

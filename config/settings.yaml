@@ -1,0 +1,188 @@
+# Everything below is meant to be edited by hand. No code changes needed to
+# add/remove tickers, change model params, or tweak backtest assumptions.
+
+benchmark: SPY
+
+# Starter universe: ~30 liquid large-caps spread across sectors. Add/remove
+# tickers freely — the pipeline picks up whatever's listed here.
+universe:
+  - AAPL
+  - MSFT
+  - GOOGL
+  - AMZN
+  - NVDA
+  - META
+  - TSLA
+  - AVGO
+  - JPM
+  - V
+  - MA
+  - UNH
+  - HD
+  - PG
+  - COST
+  - XOM
+  - CVX
+  - JNJ
+  - ABBV
+  - MRK
+  - KO
+  - PEP
+  - WMT
+  - DIS
+  - NFLX
+  - CRM
+  - ADBE
+  - AMD
+  - INTC
+  - CAT
+
+data:
+  price_history_years: 5
+  sec_edgar_base_url: "https://data.sec.gov"
+  sec_edgar_www_url: "https://www.sec.gov"
+
+# Sources listed here are load-bearing: if one fails (or comes back with 0
+# rows) during run_ingest(), the run is marked critical_failure and the
+# scheduler/pipeline stop before rebuilding features or predictions on
+# missing data, rather than silently refreshing on top of a bad ingest.
+# Everything else (news, SEC filings, insider transactions) is informational
+# and can fail without blocking the model.
+data_quality:
+  critical_sources: ["prices"]
+
+news:
+  lookback_days: 7
+  max_articles_per_ticker: 50
+  # Optional official company newsroom RSS/Atom feeds, keyed by ticker.
+  # Example: AMZN: "https://example.com/investor-news.xml"
+  company_press_release_feeds: {}
+
+features:
+  momentum_windows: [5, 10, 20, 60]
+  rsi_window: 14
+  macd_fast: 12
+  macd_slow: 26
+  macd_signal: 9
+  ma_windows: [10, 20, 50, 200]
+  volatility_window: 20
+  volume_zscore_window: 20
+
+models:
+  horizons_days: [5, 20]
+  purge_gap_days: 20
+  xgboost:
+    n_estimators: 300
+    max_depth: 4
+    learning_rate: 0.05
+    subsample: 0.8
+    colsample_bytree: 0.8
+  lightgbm:
+    n_estimators: 300
+    max_depth: 4
+    learning_rate: 0.05
+    subsample: 0.8
+    colsample_bytree: 0.8
+    min_child_samples: 20
+    verbosity: -1
+  catboost:
+    iterations: 300
+    depth: 4
+    learning_rate: 0.05
+    subsample: 0.8
+
+backtest:
+  train_window_years: 3
+  test_window_months: 6
+  step_months: 6
+  top_n: 8
+  rebalance_days: 5
+  transaction_cost_bps: 10
+  slippage_bps: 5
+  # Risk controls applied at selection time, not after -- a name that fails
+  # either is skipped in favor of the next best-scoring eligible name
+  # rather than just shrinking the book below top_n.
+  max_positions_per_sector: 3
+  # Trailing 20-day average dollar volume a candidate must clear to be
+  # eligible. All 30 current universe tickers trade well above this (the
+  # thinnest is ~$500M/day), so this is a real floor for whatever gets
+  # added later, not something actively filtering today's picks.
+  min_avg_dollar_volume: 5000000
+
+# The dashboard's "Currently Outperforming" list uses this horizon and
+# shows the top N by modeled probability of beating the market.
+outperformers:
+  horizon_days: 5
+  top_n: 10
+
+# When the after-close pipeline (ingest -> news digests -> features -> quality
+# checks -> predict -> evaluate) runs automatically. Default is
+# 4:30pm ET, weekdays -- after the US market close. day_of_week uses
+# APScheduler's cron syntax (e.g. "mon-fri", "mon,wed,fri", "*").
+scheduler:
+  timezone: "America/New_York"
+  day_of_week: "mon-fri"
+  hour: 16
+  minute: 30
+
+cloud:
+  mode: "control-plane"
+  zero_local_runtime_target: true
+  recurring_free_only: true
+  paid_fallback_enabled: false
+  control_plane:
+    queue_when_quota_exhausted: true
+    publish_partial_predictions: true
+    refresh_when_delayed_models_finish: true
+  data_providers:
+    primary: ["fmp", "finnhub", "sec", "yahoo"]
+    fallback_enabled: true
+  storage:
+    metadata_backend: "postgres-compatible"
+    artifact_backend: "s3-compatible"
+    parquet_layout: "s3://bucket/parquet/{dataset}/dt={date}/"
+  gpu_providers:
+    - name: "modal"
+      priority: 1
+      recurring_free_only: true
+      hard_stop_on_exhaustion: true
+      intended_use: ["finbert", "chronos-bolt", "chronos-2", "timesfm-2.5"]
+    - name: "kaggle"
+      priority: 2
+      recurring_free_only: true
+      hard_stop_on_exhaustion: true
+      intended_use: ["xgboost", "lightgbm", "catboost", "chronos-bolt"]
+    - name: "hf-zerogpu"
+      priority: 3
+      recurring_free_only: true
+      hard_stop_on_exhaustion: true
+      intended_use: ["finbert", "chronos-2", "timesfm-2.5"]
+  scheduler_jobs:
+    data_collection: ["news_capture", "sec_capture", "event_capture", "eod_prices"]
+    inference: ["specialist_inference", "ranking", "prediction_journal"]
+    research: ["retraining", "model_arena_backtest"]
+
+# Local, free, on-device LLM (via Ollama: https://ollama.com) used only to
+# turn data we already compute (SHAP reasons, recent headlines) into plain
+# English -- it never generates predictions itself. Entirely optional: if
+# Ollama isn't installed/running, every caller here fails soft and the app
+# falls back to the structured (chip-based) display with no LLM involved.
+# Groq (cloud, free, no local RAM cost) is tried first when GROQ_API_KEY is
+# set in .env; local Ollama is only started as a fallback -- on demand, and
+# stopped again afterward if this run is what started it. The local model
+# below is chosen for a low memory footprint (~2.5GB while active) on an
+# 8GB Mac for exactly that fallback case.
+llm:
+  enabled: true
+  base_url: "http://localhost:11434"
+  model: "llama3.2:3b"
+  timeout_seconds: 30
+  groq:
+    # Verified live against the real account (2026-09-01) -- Llama models
+    # are no longer offered on Groq; this is their current 20B open-weight
+    # model (OpenAI's gpt-oss-20b), confirmed working via a real API call.
+    model: "openai/gpt-oss-20b"
+    timeout_seconds: 20
+    # Groq's free tier is 30 requests/min; kept a bit under that since
+    # generate_many() runs calls concurrently (src/llm/client.py).
+    max_requests_per_minute: 25

@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Accuracy — AI Quant{% endblock %}
+{% block head %}<meta http-equiv="refresh" content="60">{% endblock %}
+{% block content %}
+
+<h1>Accuracy</h1>
+
+{% if n_evaluated > 0 %}
+<div class="headline-block">
+    <div class="headline-value {{ 'pos' if overall_pct >= 50 else 'neg' }}">{{ "%.0f"|format(overall_pct) }}%</div>
+    <div class="headline-change dim" style="font-size:0.82rem; margin-top:2px;">
+        {{ n_correct }} of {{ n_evaluated }} graded calls correct
+        {%- if overall_ci %} · likely range {{ overall_ci }} at this sample size{% endif %} · refreshes automatically
+    </div>
+</div>
+
+<div class="stat-strip card">
+    {% for h in by_horizon %}
+    <div>
+        <div class="stat-label">{{ h.horizon_days }}D horizon</div>
+        <div class="stat-value {{ 'pos' if h.pct >= 50 else 'neg' }}">{{ "%.0f"|format(h.pct) }}%</div>
+        <div class="stat-hint">{{ h.correct }}/{{ h.evaluated }}{% if h.ci %} · {{ h.ci }}{% endif %}</div>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="section card">
+    <div class="section-head"><h2>Recent calls</h2></div>
+    <div class="row-list">
+    {% for r in recent %}
+        <a class="row" href="/stock/{{ r.ticker }}" style="flex-wrap:wrap;">
+            <div class="row-left">
+                <div class="row-ticker" style="font-size:0.9rem;">{{ r.ticker }} · {{ r.horizon_days }}D · {{ r.prediction_date }}</div>
+                <div class="row-sub">
+                    {{ r.caption }} ·
+                    <span class="{{ 'pos' if r.outcome == 'correct' else 'neg' }}">{{ 'correct' if r.outcome == 'correct' else 'missed' }}</span>
+                </div>
+            </div>
+            <div class="row-right">
+                <div class="row-value {{ r.outlook_class }}">{{ "%+.1f"|format(r.expected_relative_return * 100) }}%</div>
+                <div class="row-sub {{ r.actual_class }}">actual {{ "%+.1f"|format(r.actual_relative_return * 100) }}%</div>
+            </div>
+        </a>
+    {% endfor %}
+    </div>
+</div>
+
+<details class="section card">
+    <summary><h2 style="display:inline;">By ticker</h2></summary>
+    <div class="row-list" style="margin-top:12px;">
+    {% for t in by_ticker %}
+        <a class="row" href="/stock/{{ t.ticker }}">
+            <div class="row-left">
+                <div class="row-ticker" style="font-size:0.9rem;">{{ t.ticker }}</div>
+                <div class="row-sub">{{ t.evaluated }} graded{% if t.ci %} · {{ t.ci }} likely range{% endif %}</div>
+            </div>
+            <div class="row-right">
+                <div class="row-value {{ 'pos' if t.pct >= 50 else 'neg' }}">{{ "%.0f"|format(t.pct) }}%</div>
+            </div>
+        </a>
+    {% endfor %}
+    </div>
+</details>
+
+{% else %}
+<div class="empty-state">
+    No predictions have been graded yet — nothing is checked before enough real trading days have passed to know
+    whether it actually came true.
+    {% if next_eval_date %}First check {{ next_eval_date }}.{% endif %}
+    This page refreshes automatically, so it'll fill in on its own once results are in.
+</div>
+{% endif %}
+
+{% endblock %}
