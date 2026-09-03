@@ -33,6 +33,12 @@ class ModelTier(IntEnum):
     EXPERIMENT = 40
 
 
+class ResultStatus(StrEnum):
+    READY = "ready"
+    DELAYED = "delayed"
+    FAILED = "failed"
+
+
 @dataclass(frozen=True)
 class ProviderQuota:
     provider: str
@@ -138,6 +144,42 @@ class ModelSpec:
     publish_partial_results: bool = True
     tier: ModelTier = ModelTier.EXPERIMENT
     ensemble_weight: float = 0.0
+
+
+@dataclass(frozen=True)
+class SpecialistResult:
+    """The only data shape a specialist may hand to the ensemble gatekeeper."""
+
+    ticker: str
+    as_of: datetime
+    model_name: str
+    model_version: str
+    specialist: str
+    horizon_days: int
+    prediction: float | None = None
+    probability: float | None = None
+    confidence: float | None = None
+    uncertainty: float | None = None
+    features_version: str | None = None
+    data_timestamp: datetime | None = None
+    status: ResultStatus = ResultStatus.READY
+    artifact_uri: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class PublishedPrediction:
+    ticker: str
+    as_of: datetime
+    horizon_days: int
+    prediction: float
+    probability: float | None
+    confidence: float | None
+    freshness: str
+    contributing_models: tuple[str, ...]
+    pending_models: tuple[str, ...]
+    refresh_required: bool
+    data_timestamp: datetime | None
 
 
 @dataclass

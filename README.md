@@ -90,6 +90,8 @@ Deployment preparation, runtime settings, and post-deploy verification are in [D
 
 `python scripts/cloudctl.py predict` prints the execution order and the publish/refresh decision. Fresh XGBoost, LightGBM, and CatBoost predictions are publish-critical and use the configured relative weights. FinBERT event analysis follows, Chronos-Bolt is an enhancement, and Chronos-2/TimesFM are experiments. If a recurring-free GPU quota is exhausted, available baseline predictions publish and the delayed GPU specialists remain queued for a later refresh.
 
+Every specialist writes the same cloud result contract: ticker, timestamp, model/version, horizon, prediction, probability, confidence, uncertainty, feature version, and data timestamp. The gatekeeper is the only place outputs are combined; specialists never call one another directly. The internal API exposes the catalog at `GET /api/control-plane/models`.
+
 ## Run the dashboard
 
 ```bash

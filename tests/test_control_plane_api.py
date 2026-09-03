@@ -28,3 +28,10 @@ def test_control_plane_quota_endpoint_enforces_recurring_free_only_defaults():
 
 def test_control_plane_router_is_registered_with_the_application():
     assert any(getattr(route, "original_router", None) is control_plane.router for route in app.routes)
+
+
+def test_model_catalog_exposes_specialists_without_provider_specific_details():
+    models = control_plane.models()
+
+    assert {model["name"] for model in models} >= {"xgboost", "finbert", "chronos-2", "timesfm-2.5"}
+    assert next(model for model in models if model["name"] == "xgboost")["tier"] == "publish_critical"

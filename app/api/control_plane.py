@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter
 
 from src.cloud.control_plane import ControlPlane
+from src.cloud.model_registry import default_model_specs
 from src.cloud.providers import recurring_free_provider_defaults
 from src.cloud.scheduler import default_job_definitions
 
@@ -53,4 +54,21 @@ def gpu_quota() -> list[dict]:
             "hard_stop_on_exhaustion": provider.quota().hard_stop_on_exhaustion,
         }
         for provider in recurring_free_provider_defaults()
+    ]
+
+
+@router.get("/models")
+def models() -> list[dict]:
+    """Canonical specialist catalog for workers, dashboard, and model arena."""
+    return [
+        {
+            "name": spec.name,
+            "specialist": spec.specialist,
+            "tier": spec.tier.name.lower(),
+            "horizons_days": list(spec.horizons_days),
+            "requires_gpu": spec.execution.requires_gpu,
+            "minimum_vram_gb": spec.execution.minimum_vram_gb,
+            "ensemble_weight": spec.ensemble_weight,
+        }
+        for spec in default_model_specs()
     ]
